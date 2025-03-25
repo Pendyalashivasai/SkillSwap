@@ -12,11 +12,24 @@ class FirestoreService {
     await _firestore.collection('users').doc(user.id).set(user.toMap());
   }
 
-  Future<UserModel?> getUser(String uid) async {
-    final doc = await _firestore.collection('users').doc(uid).get();
-    return doc.exists ? UserModel.fromMap(doc.data()!, doc.id) : null;
+ Future<UserModel?> getUser(String uid) async {
+  if (uid.isEmpty) {
+    print("FirestoreService: Attempted to fetch user with empty uid");
+    return null;
   }
 
+  try {
+    final doc = await _firestore.collection('users').doc(uid).get();
+    if (!doc.exists) {
+      print("FirestoreService: User not found for ID $uid");
+      return null;
+    }
+    return UserModel.fromMap(doc.data()!, doc.id);
+  } catch (e) {
+    print("FirestoreService: Error fetching user - $e");
+    return null;
+  }
+}
   Future<void> updateUser(UserModel user) async {
     await _firestore.collection('users').doc(user.id).update(user.toMap());
   }

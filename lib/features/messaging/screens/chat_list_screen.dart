@@ -10,15 +10,6 @@ class ChatListScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Messages'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.search),
-            onPressed: () => _showSearchDialog(context),
-          ),
-        ],
-      ),
       body: Consumer<ChatState>(
         builder: (context, chatState, _) {
           if (chatState.chats.isEmpty) {

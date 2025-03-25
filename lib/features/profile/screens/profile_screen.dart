@@ -23,9 +23,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _loadUser();
   }
 
-  void _loadUser() {
-    _userFuture = context.read<UserState>().getUser(widget.userId);
-  }
+ void _loadUser() {
+  _userFuture = context.read<UserState>().getUser(widget.userId).then((user) {
+    if (user == null) {
+      debugPrint("User not found in Firestore: ${widget.userId}");
+    }
+    return user;
+  }).catchError((error) {
+    debugPrint("Error fetching user: $error");
+    return null; // Ensure it doesn't crash
+  });
+}
 
   @override
   Widget build(BuildContext context) {

@@ -22,7 +22,6 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Discover Skills'),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(110),
           child: Padding(
