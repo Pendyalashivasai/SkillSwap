@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:skillswap/features/sessions/services/session_service.dart' as service;
-import 'package:skillswap/models/session_model.dart';
-import 'package:skillswap/state/session_state.dart';
-import 'package:skillswap/widgets/user_avatar.dart';
+import '../../../models/user_model.dart';
+import '../../../models/session_model.dart';
+import '../../../state/session_state.dart';
+import '../../../state/user_state.dart';
+import '../../../widgets/user_avatar.dart';
 
 class SessionDetailScreen extends StatefulWidget {
   final String sessionId;
@@ -43,40 +44,53 @@ class _SessionDetailScreenState extends State<SessionDetailScreen> {
     );
   }
 
- Widget _buildSessionHeader(Session session) {
-  return Row(
-    children: [
-      UserAvatar(userId: session.teacherId, radius: 30),
-      const SizedBox(width: 10),
-      Expanded(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildSessionHeader(Session session) {
+    return FutureBuilder<UserModel?>(
+      future: context.read<UserState>().getUserById(session.teacherId),
+      builder: (context, snapshot) {
+        final teacher = snapshot.data;
+        
+        return Row(
           children: [
-            Text(
-              session.skillName,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              overflow: TextOverflow.ellipsis,
-            ),
-            Text(
-              _formatSessionTime(session.startTime, session.endTime),
-              overflow: TextOverflow.ellipsis,
+            if (teacher != null)
+              UserAvatar(user: teacher, radius: 30)
+            else
+              const CircleAvatar(
+                radius: 30,
+                child: CircularProgressIndicator(),
+              ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    session.skillName,
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    _formatSessionTime(session.startTime, session.endTime),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
             ),
           ],
-        ),
-      ),
-    ],
-  );
-}
+        );
+      },
+    );
+  }
 
-String _formatSessionTime(DateTime startTime, DateTime endTime) {
-  final dateStr = startTime.toLocal().toString().split(' ')[0];
-  final startHour = startTime.toLocal().hour.toString().padLeft(2, '0');
-  final startMinute = startTime.toLocal().minute.toString().padLeft(2, '0');
-  final endHour = endTime.toLocal().hour.toString().padLeft(2, '0');
-  final endMinute = endTime.toLocal().minute.toString().padLeft(2, '0');
-  
-  return '$dateStr • $startHour:$startMinute - $endHour:$endMinute';
-}
+  String _formatSessionTime(DateTime startTime, DateTime endTime) {
+    final dateStr = startTime.toLocal().toString().split(' ')[0];
+    final startHour = startTime.toLocal().hour.toString().padLeft(2, '0');
+    final startMinute = startTime.toLocal().minute.toString().padLeft(2, '0');
+    final endHour = endTime.toLocal().hour.toString().padLeft(2, '0');
+    final endMinute = endTime.toLocal().minute.toString().padLeft(2, '0');
+    
+    return '$dateStr • $startHour:$startMinute - $endHour:$endMinute';
+  }
 
   Widget _buildSessionInfo(Session session) {
     return Card(
@@ -156,78 +170,78 @@ String _formatSessionTime(DateTime startTime, DateTime endTime) {
     );
   }
 
- Future<void> _updateStatus(BuildContext context, Session session, SessionStatus status) async {
-  final confirmed = await showDialog<bool>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: Text('Confirm ${status.name}'),
-      content: Text('Are you sure you want to ${status.name.toLowerCase()} this session?'),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, false),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.pop(context, true),
-          child: const Text('Confirm'),
-        ),
-      ],
-    ),
-  );
+  Future<void> _updateStatus(BuildContext context, Session session, SessionStatus status) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Confirm ${status.name}'),
+        content: Text('Are you sure you want to ${status.name.toLowerCase()} this session?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Confirm'),
+          ),
+        ],
+      ),
+    );
 
-  if (confirmed != true) return;
+    if (confirmed != true) return;
 
-  try {
-    await context.read<SessionState>().updateSessionStatus(session.id, status);
-    if (!mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Session ${status.name.toLowerCase()}')),
-      );
-      Navigator.pop(context);
-    }
-  } catch (e) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: ${e.toString()}')),
-      );
-    }
-  }
-}
-
-Future<void> _cancelSession(BuildContext context, Session session) async {
-  final confirmed = await showDialog<bool>(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('Cancel Session'),
-      content: const Text('Are you sure you want to cancel this session?'),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, false),
-          child: const Text('No'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.pop(context, true),
-          child: const Text('Yes'),
-        ),
-      ],
-    ),
-  );
-
-  if (confirmed != true) return;
-
-  try {
-    await context.read<SessionState>().cancelSession(session.id);
-    if (mounted) {
-      Navigator.pop(context);
-    }
-  } catch (e) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: ${e.toString()}')),
-      );
+    try {
+      await context.read<SessionState>().updateSessionStatus(session.id, status);
+      if (!mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Session ${status.name.toLowerCase()}')),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${e.toString()}')),
+        );
+      }
     }
   }
-}
+
+  Future<void> _cancelSession(BuildContext context, Session session) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cancel Session'),
+        content: const Text('Are you sure you want to cancel this session?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('No'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Yes'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await context.read<SessionState>().cancelSession(session.id);
+      if (mounted) {
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${e.toString()}')),
+        );
+      }
+    }
+  }
 
   String _getStatusText(SessionStatus status) {
     return status.name[0].toUpperCase() + status.name.substring(1);

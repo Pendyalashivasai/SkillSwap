@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:skillswap/features/auth/services/auth_service.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
@@ -71,7 +72,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             ],
             const Spacer(),
             TextButton(
-              onPressed: () => Navigator.pop(context),
+               onPressed: () => context.goNamed('login'),
               child: const Text('Back to Login'),
             ),
           ],

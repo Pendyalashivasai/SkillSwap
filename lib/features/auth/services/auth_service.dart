@@ -1,6 +1,8 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
 import 'package:skillswap/services/firestore_service.dart';
 import 'package:skillswap/models/user_model.dart';
+import 'package:skillswap/state/user_state.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -13,6 +15,8 @@ Stream<User?> get authStateChanges => _auth.authStateChanges();
         email: email,
         password: password,
       );
+      
+      // Just return the user credential
       return credential.user;
     } on FirebaseAuthException catch (e) {
       throw _handleAuthError(e);
@@ -20,32 +24,32 @@ Stream<User?> get authStateChanges => _auth.authStateChanges();
   }
 
 
-  Future<User?> registerWithEmail(
-    String email, 
-    String password,
-    String name,
-  ) async {
+ 
+  Future<User?> registerWithEmail(String email, String password, String name) async {
     try {
-      final credential = await _auth.createUserWithEmailAndPassword(
+      final userCredential = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
       
-      // Create user profile in Firestore
-      final user = UserModel(
-        id: credential.user!.uid,
-        name: name,
-        email: email,
-        skillsOffering: [],
-        skillsSeeking: [],
-        joinDate: DateTime.now(),
-      );
+      if (userCredential.user != null) {
+        // Create user profile in Firestore
+        final user = UserModel(
+          id: userCredential.user!.uid,
+          name: name,
+          email: email,
+          joinDate: DateTime.now(),
+          skillsOffering: [],
+          skillsSeeking: [],
+        );
+        
+        await _firestore.addUser(user);
+        await userCredential.user?.updateDisplayName(name);
+      }
       
-      await _firestore.addUser(user);
-      
-      return credential.user;
-    } on FirebaseAuthException catch (e) {
-      throw _handleAuthError(e);
+      return userCredential.user;
+    } catch (e) {
+      rethrow;
     }
   }
 
@@ -66,5 +70,26 @@ Stream<User?> get authStateChanges => _auth.authStateChanges();
     await _auth.signOut();
   }
 
-  sendPasswordResetEmail(String trim) {}
+  Future<void> sendPasswordResetEmail(String email) async {
+    try {
+      await _auth.sendPasswordResetEmail(email: email);
+    } on FirebaseAuthException catch (e) {
+      // Handle specific Firebase Auth errors
+      String errorMessage;
+      switch (e.code) {
+        case 'invalid-email':
+          errorMessage = 'Invalid email address';
+          break;
+        case 'user-not-found':
+          errorMessage = 'No user found with this email address';
+          break;
+        default:
+          errorMessage = 'An error occurred. Please try again';
+      }
+      throw errorMessage;
+    } catch (e) {
+      // Catch any other unexpected errors
+      throw 'An unexpected error occurred. Please try again';
+    }
+  }
 }

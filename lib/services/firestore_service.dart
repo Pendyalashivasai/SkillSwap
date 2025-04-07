@@ -5,43 +5,98 @@ import 'package:skillswap/models/session_model.dart';
 import 'package:skillswap/models/skill_model.dart' as skill_model;
 import 'package:skillswap/models/user_model.dart';
 
+import '../models/skill_model.dart';
+import '../models/swaprequest_model.dart';
+
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   Future<void> addUser(UserModel user) async {
-    await _firestore.collection('users').doc(user.id).set(user.toMap());
+    try {
+      final userData = user.toMap();
+      // Remove MongoDB specific fields
+      userData.remove('_id');
+      userData.remove('profileImageUrl'); // Don't store image URL in Firestore
+      
+      await _firestore.collection('users').doc(user.id).set(userData);
+      print('FirestoreService: Added user with ID: ${user.id}');
+    } catch (e) {
+      print('FirestoreService: Error adding user - $e');
+      rethrow;
+    }
   }
 
- Future<UserModel?> getUser(String uid) async {
-  if (uid.isEmpty) {
-    print("FirestoreService: Attempted to fetch user with empty uid");
-    return null;
-  }
-
-  try {
-    final doc = await _firestore.collection('users').doc(uid).get();
-    if (!doc.exists) {
-      print("FirestoreService: User not found for ID $uid");
+  Future<UserModel?> getUser(String uid) async {
+    print("FirestoreService: Attempting to fetch user with ID: $uid");
+    
+    if (uid.isEmpty) {
+      print("FirestoreService: Attempted to fetch user with empty uid");
       return null;
     }
-    return UserModel.fromMap(doc.data()!, doc.id);
-  } catch (e) {
-    print("FirestoreService: Error fetching user - $e");
-    return null;
+
+    try {
+      final doc = await _firestore.collection('users').doc(uid).get();
+      if (!doc.exists) {
+        print("FirestoreService: User not found for ID $uid");
+        return null;
+      }
+
+      final data = doc.data()!;
+      data['_id'] = doc.id; // Add ID for MongoDB compatibility
+      data['profileImageUrl'] = null; // Will be populated from MongoDB later
+      
+      print("FirestoreService: Successfully fetched user with ID: $uid");
+      return UserModel.fromMap(data);
+    } catch (e) {
+      print("FirestoreService: Error fetching user - $e");
+      return null;
+    }
   }
-}
-  Future<void> updateUser(UserModel user) async {
-    await _firestore.collection('users').doc(user.id).update(user.toMap());
+
+  Future<void> updateUser(String userId, Map<String, dynamic> updates) async {
+    try {
+      await _firestore.collection('users').doc(userId).update(updates);
+      print('FirestoreService: Updated user with ID: $userId');
+    } catch (e) {
+      print('FirestoreService: Error updating user - $e');
+      rethrow;
+    }
+  }
+
+  Future<void> updateUserData(String userId, Map<String, dynamic> updates) async {
+    try {
+      await _firestore
+          .collection('users')
+          .doc(userId)
+          .update(updates);
+      print('FirestoreService: Updated user data for ID: $userId');
+    } catch (e) {
+      print('FirestoreService: Error updating user data - $e');
+      rethrow;
+    }
+  }
+
+  Future<void> updateUserSkills(String userId, Map<String, dynamic> skillUpdates) async {
+    try {
+      await _firestore.collection('users').doc(userId).update(skillUpdates);
+      print('FirestoreService: Updated user skills for ID: $userId');
+    } catch (e) {
+      print('FirestoreService: Error updating user skills - $e');
+      rethrow;
+    }
   }
 
   Stream<List<UserModel>> getUsersWithSkill(String skillId) {
     return _firestore
         .collection('users')
-        .where('skillsOffering', arrayContains: skillId)
+        .where('skillsOffering.id', isEqualTo: skillId)
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => UserModel.fromMap(doc.data(), doc.id))
-            .toList());
+        .map((snapshot) => snapshot.docs.map((doc) {
+              final data = doc.data();
+              data['_id'] = doc.id;
+              data['profileImageUrl'] = null; // Will be populated from MongoDB
+              return UserModel.fromMap(data);
+            }).toList());
   }
 
   // Skill Methods
@@ -53,15 +108,34 @@ class FirestoreService {
   }
 
   Future<List<UserModel>> getAllUsers() async {
-    final snapshot = await _firestore.collection('users').get();
-    return snapshot.docs
-        .map((doc) => UserModel.fromMap(doc.data(), doc.id))
-        .toList();
+    try {
+      final snapshot = await _firestore.collection('users').get();
+      return snapshot.docs.map((doc) {
+        final data = doc.data();
+        data['_id'] = doc.id;
+        data['profileImageUrl'] = null; // Will be populated from MongoDB
+        return UserModel.fromMap(data);
+      }).toList();
+    } catch (e) {
+      print('FirestoreService: Error getting all users - $e');
+      return [];
+    }
   }
 
-  Future<void> addSkill(skill_model.Skill skill) async {
-    await _firestore.collection('skills').add(skill.toMap());
+ Future<String> addSkill(Skill skill) async {
+  try {
+    final docRef = await _firestore.collection('skills').add(skill.toMap());
+    print('FirestoreService: Added skill with ID: ${docRef.id}');
+    
+    // Update the document with its own ID
+    await docRef.update({'id': docRef.id});
+    
+    return docRef.id;
+  } catch (e) {
+    print('FirestoreService: Error adding skill - $e');
+    rethrow;
   }
+}
 
   Future<void> updateSkillDemand(String skillId, int increment) async {
     await _firestore.collection('skills').doc(skillId).update({
@@ -161,4 +235,65 @@ Future<void> cancelSession(String sessionId) async {
     'status': SessionStatus.canceled.name,
   });
 }
+
+Future<void> createSwapRequest({
+    required String senderId,
+    required String receiverId,
+  }) async {
+    try {
+      final swapRequest = SwapRequestModel(
+        id: '', // Will be set by Firestore
+        senderId: senderId,
+        receiverId: receiverId,
+        status: SwapRequestStatus.pending,
+        createdAt: DateTime.now(),
+      );
+
+      final docRef = await _firestore
+          .collection('swapRequests')
+          .add(swapRequest.toMap());
+
+      // Update the document with its ID
+      await docRef.update({'id': docRef.id});
+
+      print('SwapRequest created with ID: ${docRef.id}');
+    } catch (e) {
+      print('Error creating swap request: $e');
+      rethrow;
+    }
+  }
+
+Future<List<SwapRequestModel>> getReceivedRequests(String userId) async {
+  try {
+    final snapshot = await _firestore
+        .collection('swapRequests')
+        .where('receiverId', isEqualTo: userId)
+        .where('status', isEqualTo: SwapRequestStatus.pending.name)
+        .orderBy('createdAt', descending: true)
+        .get();
+
+    return snapshot.docs
+        .map((doc) => SwapRequestModel.fromMap(doc.data(), doc.id))
+        .toList();
+  } catch (e) {
+    print('FirestoreService: Error fetching received requests - $e');
+    rethrow;
+  }
+}
+
+Future<void> updateSwapRequest(String requestId, SwapRequestStatus status) async {
+  try {
+    await _firestore.collection('swapRequests').doc(requestId).update({
+      'status': status.name,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    
+    print('FirestoreService: Updated request $requestId to ${status.name}');
+  } catch (e) {
+    print('FirestoreService: Error updating request status - $e');
+    rethrow;
+  }
+}
+
+
 }

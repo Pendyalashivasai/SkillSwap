@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:skillswap/models/skill_model.dart' as skill_model;
+import 'package:skillswap/models/skill_model.dart';
 import 'package:skillswap/models/user_model.dart';
 import 'package:skillswap/services/firestore_service.dart';
 
@@ -40,5 +41,21 @@ class SkillState extends ChangeNotifier {
     return _availableSkills.where((skill) {
       return user.skillsSeeking.any((s) => s.category == skill.category);
     }).toList();
+  }
+
+   Future<void> addCustomSkill(Skill skill) async {
+    try {
+      // Add to Firestore first
+      final skillId = await _firestore.addSkill(skill);
+      
+      // Add to local state with the new ID
+      _availableSkills.add(skill.copyWith(id: skillId));
+      notifyListeners();
+      
+      print('Added custom skill: ${skill.name}');
+    } catch (e) {
+      print('Error adding custom skill: $e');
+      rethrow;
+    }
   }
 }

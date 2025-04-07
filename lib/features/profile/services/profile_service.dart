@@ -1,53 +1,79 @@
-  import 'package:skillswap/models/skill_model.dart';
-  import 'package:skillswap/models/user_model.dart';
-  import 'package:skillswap/services/firestore_service.dart';
-  import 'package:skillswap/services/storage_service.dart';
+import 'dart:io';
 
-  class ProfileService {
-    final FirestoreService _firestore;
-    final StorageService _storage;
-    UserModel? _currentUser;
+import 'package:skillswap/models/skill_model.dart';
+import 'package:skillswap/models/user_model.dart';
+import 'package:skillswap/services/firestore_service.dart';
+import 'package:skillswap/services/mongodb_service.dart';
+import 'package:skillswap/state/user_state.dart';
 
-    ProfileService(this._firestore, this._storage);
+class ProfileService {
+  final MongoDBService _mongodb;
+  final UserState _userState;
+  final FirestoreService _firestore = FirestoreService();
 
-    Future<void> loadCurrentUser(String userId) async {
-      _currentUser = await _firestore.getUser(userId);
+  ProfileService(this._mongodb, this._userState);
+
+  Future<void> updateProfilePicture(String userId, String imagePath) async {
+    try {
+      // Upload the image to MongoDB and get the URL
+      final imageUrl = await _mongodb.uploadProfileImage(
+        userId,
+        File(imagePath),
+      );
+      print('ProfileService: Generated image URL - $imageUrl');
+
+      // Update the user's profile in Firestore
+      await _firestore.updateUser(userId, {'profileImageUrl': imageUrl});
+      print('ProfileService: Updated user with image URL - $imageUrl');
+
+      // Update the local state
+      await _userState.updateProfileImage(userId, imageUrl);
+    } catch (e) {
+      print('ProfileService: Error updating profile picture - $e');
+      rethrow;
+    }
+  }
+
+  Future<void> loadCurrentUser(String userId) async {
+    try {
+      final userData = await _mongodb.getUser(userId);
+      if (userData != null) {
+        print('ProfileService: Raw user data - $userData');
+        _userState.setCurrentUserId(UserModel.fromMap(userData) as String);
+        print('ProfileService: Loaded user with image URL - ${_userState.currentUser?.profileImageUrl}');
+      }
+    } catch (e) {
+      print('ProfileService: Error loading user - $e');
+      rethrow;
+    }
+  }
+
+  Future<UserModel?> getUser(String userId) async {
+    try {
+      final userData = await _mongodb.getUser(userId);
+      if (userData != null) {
+        return UserModel.fromMap(userData);
+      }
+      return null;
+    } catch (e) {
+      print('ProfileService: Error getting user - $e');
+      rethrow;
+    }
+  }
+
+  Future<void> addCustomSkill(String userId, Skill skill) async {
+    if (_userState.currentUser == null || _userState.currentUser!.id != userId) {
+      await loadCurrentUser(userId);
     }
 
-    Future<void> updateProfilePicture(String userId, String imagePath) async {
-  if (_currentUser == null || _currentUser!.id != userId) {
-    await loadCurrentUser(userId); // Load user if not already loaded
-  }
-  
-  if (_currentUser == null) {
-    throw Exception("Error: Unable to update profile picture, user not found.");
-  }
-
-  final imageUrl = await _storage.uploadProfileImage(userId, imagePath);
-  final updatedUser = _currentUser!.copyWith(profileImageUrl: imageUrl);
-  
-  await _firestore.updateUser(updatedUser);
-  _currentUser = updatedUser; // Update local state
-}
-
-    Stream<List<UserModel>> findSkillMatches(String skillId) {
-      return _firestore.getUsersWithSkill(skillId);
+    if (_userState.currentUser == null) {
+      throw Exception("Error: Cannot add skill, user not found.");
     }
 
-   Future<void> addCustomSkill(String userId, Skill skill) async {
-  if (_currentUser == null || _currentUser!.id != userId) {
-    await loadCurrentUser(userId);
+    final updatedSkills = [..._userState.currentUser!.skillsOffering, skill];
+    final updatedUser = _userState.currentUser!.copyWith(skillsOffering: updatedSkills);
+    
+    await _mongodb.updateUser(userId, {'skillsOffering': updatedSkills});
+    _userState.setCurrentUserId(updatedUser as String); // Update local state
   }
-
-  if (_currentUser == null) {
-    throw Exception("Error: Cannot add skill, user not found.");
-  }
-
-  final updatedSkills = [..._currentUser!.skillsOffering, skill];
-  final updatedUser = _currentUser!.copyWith(skillsOffering: updatedSkills);
-  
-  await _firestore.updateUser(updatedUser);
-  _currentUser = updatedUser; // Update local state
 }
-
-  }

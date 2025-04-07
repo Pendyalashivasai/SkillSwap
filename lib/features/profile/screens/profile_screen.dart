@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:skillswap/features/profile/screens/edit_profile_screen.dart';
 import 'package:skillswap/models/skill_model.dart';
 import 'package:skillswap/models/user_model.dart';
 import 'package:skillswap/state/user_state.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+
+import '../../auth/controllers/auth_controller.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String userId;
@@ -16,24 +20,79 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   late Future<UserModel?> _userFuture;
+  bool _isLoading = true;
+  String? _errorMessage;
+  late String _userId;
+
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final userState = context.read<UserState>();
+      setState(() {
+        _userId = widget.userId ?? userState.currentUserId ?? '';
+        print("ProfileScreen: Using user ID: $_userId");
+      });
+      _validateAndLoadUser();
+    });
+  }
+
+  void _validateAndLoadUser() {
+    print("ProfileScreen: Validating user ID: $_userId");
+    if (_userId.isEmpty) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Invalid user ID';
+      });
+      return;
+    }
     _loadUser();
   }
 
- void _loadUser() {
-  _userFuture = context.read<UserState>().getUser(widget.userId).then((user) {
-    if (user == null) {
-      debugPrint("User not found in Firestore: ${widget.userId}");
+  Future<void> _loadUser() async {
+    if (!mounted) return;
+    
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final userState = context.read<UserState>();
+      print("ProfileScreen: Loading user with ID: $_userId");
+      
+      // Force a fresh load
+      final user = await userState.getUser(_userId);
+      
+      if (!mounted) return;
+      
+      if (user == null) {
+        print("ProfileScreen: User not found: $_userId");
+        setState(() {
+          _errorMessage = 'User not found';
+        });
+      } else {
+        print("ProfileScreen: User loaded with image: ${user.profileImageUrl}");
+        setState(() {
+          _userFuture = Future.value(user);
+        });
+      }
+    } catch (error) {
+      print("ProfileScreen: Error loading user: $error");
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Failed to load profile';
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
-    return user;
-  }).catchError((error) {
-    debugPrint("Error fetching user: $error");
-    return null; // Ensure it doesn't crash
-  });
-}
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -43,88 +102,134 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profile'),
-        actions: [
-          if (isCurrentUser)
-            IconButton(
-              icon: const Icon(Icons.edit),
-              onPressed: () => _navigateToEditProfile(context),
-            ),
+      actions: [
+        if (isCurrentUser) ...[
+          IconButton(
+            icon: const Icon(Icons.edit),
+            onPressed: () => _navigateToEditProfile(context),
+          ),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () => _handleLogout(context),
+          ),
         ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          setState(() {
-            _loadUser();
-          });
-        },
-        child: FutureBuilder<UserModel?>(
-          future: _userFuture,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
+      ],
+    ),
+      body: _buildBody(),
+    );
+  }
 
-            if (snapshot.hasError) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text('Failed to load profile'),
-                    TextButton(
-                      onPressed: () => _loadUser(),
-                      child: const Text('Retry'),
-                    ),
-                  ],
-                ),
-              );
-            }
+  Widget _buildBody() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
-            if (!snapshot.hasData) {
-              return const Center(child: Text('User not found'));
-            }
-
-            final user = snapshot.data!;
-            return SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _ProfileHeader(user: user),
-                  const SizedBox(height: 24),
-                  _SkillsSection(
-                    title: 'Skills Offering',
-                    skills: user.skillsOffering,
-                  ),
-                  const SizedBox(height: 24),
-                  _SkillsSection(
-                    title: 'Skills Seeking',
-                    skills: user.skillsSeeking,
-                  ),
-                ],
-              ),
-            );
-          },
+    if (_errorMessage != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(_errorMessage!),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _loadUser,
+              child: const Text('Retry'),
+            ),
+          ],
         ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadUser,
+      child: FutureBuilder<UserModel?>(
+        future: _userFuture,
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            return const Center(child: Text('No user data available'));
+          }
+
+          final user = snapshot.data!;
+          return _buildProfileContent(user);
+        },
       ),
     );
   }
 
-  void _navigateToEditProfile(BuildContext context) {
-    Navigator.push(
+Future<void> _handleLogout(BuildContext context) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Confirm Logout'),
+      content: const Text('Are you sure you want to logout?'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Logout'),
+        ),
+      ],
+    ),
+  );
+
+  if (confirmed == true && mounted) {
+    try {
+      await context.read<AuthController>().logout();
+      if (mounted) {
+        context.go('/login'); // Navigate to login screen
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error logging out: $e')),
+        );
+      }
+    }
+  }
+}
+
+
+  Widget _buildProfileContent(UserModel user) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _ProfileHeader(user: user),
+          const SizedBox(height: 24),
+          _SkillsSection(
+            title: 'Skills Offering',
+            skills: user.skillsOffering,
+          ),
+          const SizedBox(height: 24),
+          _SkillsSection(
+            title: 'Skills Seeking',
+            skills: user.skillsSeeking,
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _navigateToEditProfile(BuildContext context) async {
+    final result = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => const EditProfileScreen(),
       ),
-    ).then((_) {
-      if (mounted) {
-        setState(() {
-          _loadUser();
-        });
-      }
-    });
+    );
+
+    if (mounted && result == true) {
+      setState(() {
+        _userFuture = context.read<UserState>().getUser(_userId);
+      });
+      _loadUser();
+    }
   }
 }
-// Add after the _ProfileScreenState class:
 
 class _ProfileHeader extends StatelessWidget {
   final UserModel user;
@@ -133,13 +238,30 @@ class _ProfileHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    print('ProfileHeader: Building with imageUrl - ${user.profileImageUrl}');
     return Row(
       children: [
         CircleAvatar(
           radius: 40,
-          backgroundImage: user.profileImageUrl != null
-              ? NetworkImage(user.profileImageUrl!)
-              : const AssetImage('assets/placeholder_profile.png') as ImageProvider,
+          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+          child: user.profileImageUrl != null
+              ? ClipOval(
+                  child: CachedNetworkImage(
+                    imageUrl: user.profileImageUrl!,
+                    placeholder: (context, url) {
+                      print('ProfileHeader: Loading image from - $url');
+                      return const CircularProgressIndicator();
+                    },
+                    errorWidget: (context, url, error) {
+                      print('ProfileHeader: Error loading image - $error');
+                      return const Icon(Icons.person);
+                    },
+                    fit: BoxFit.cover,
+                    width: 80,
+                    height: 80,
+                  ),
+                )
+              : const Icon(Icons.person, size: 40),
         ),
         const SizedBox(width: 16),
         Expanded(
@@ -226,4 +348,7 @@ class _SkillChip extends StatelessWidget {
       ),
     );
   }
+
+
+  
 }

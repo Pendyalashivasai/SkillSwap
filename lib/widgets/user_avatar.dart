@@ -1,62 +1,56 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:skillswap/services/firestore_service.dart';
-import 'package:skillswap/state/user_state.dart';
+import '../models/user_model.dart';
 
 class UserAvatar extends StatelessWidget {
-  final String userId;
+  final UserModel user;
   final double radius;
-  final VoidCallback? onTap;
 
   const UserAvatar({
-    super.key,
-    required this.userId,
+    Key? key,
+    required this.user,
     this.radius = 20,
-    this.onTap,
-  });
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<String?>(
-      future: _getUserAvatarUrl(context),
-      builder: (context, snapshot) {
-        final imageUrl = snapshot.data;
-        return GestureDetector(
-          onTap: onTap,
-          child: CircleAvatar(
-            radius: radius,
-            backgroundColor: Colors.grey[200],
-            backgroundImage: imageUrl != null
-                ? CachedNetworkImageProvider(imageUrl)
-                : null,
-            child: imageUrl == null
-                ? Icon(
+    print('UserAvatar: Building with imageUrl - ${user.profileImageUrl}');
+    
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: Colors.grey[200],
+      child: user.profileImageUrl != null
+          ? ClipOval(
+              child: Image.network(
+                user.profileImageUrl!,
+                width: radius * 2,
+                height: radius * 2,
+                fit: BoxFit.cover,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Center(
+                    child: CircularProgressIndicator(
+                      value: loadingProgress.expectedTotalBytes != null
+                          ? loadingProgress.cumulativeBytesLoaded / 
+                            loadingProgress.expectedTotalBytes!
+                          : null,
+                    ),
+                  );
+                },
+                errorBuilder: (context, error, stackTrace) {
+                  print('Error loading avatar: $error');
+                  return Icon(
                     Icons.person,
                     size: radius,
                     color: Colors.grey[600],
-                  )
-                : null,
-          ),
-        );
-      },
+                  );
+                },
+              ),
+            )
+          : Icon(
+              Icons.person,
+              size: radius,
+              color: Colors.grey[600],
+            ),
     );
-  }
-
-  Future<String?> _getUserAvatarUrl(BuildContext context) async {
-    try {
-      // First try to get from current state
-      final userState = context.read<UserState>();
-      if (userState.currentUser?.id == userId) {
-        return userState.currentUser?.profileImageUrl;
-      }
-
-      // Fallback to Firestore lookup
-      final user = await FirestoreService().getUser(userId);
-      return user?.profileImageUrl;
-    } catch (e) {
-      debugPrint('Error getting user avatar: $e');
-      return null;
-    }
   }
 }

@@ -16,7 +16,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
 
- Future<void> _submit() async {
+Future<void> _submit() async {
   if (!_formKey.currentState!.validate()) return;
 
   setState(() => _isLoading = true);
@@ -27,8 +27,9 @@ class _LoginScreenState extends State<LoginScreen> {
       _passwordController.text.trim(),
     );
     
+    print("LoginScreen: User logged in with ID: ${user?.uid}"); // Add this line
+    
     if (user != null && mounted) {
-      // Use goRouter to navigate
       context.goNamed('home');
     }
   } catch (e) {

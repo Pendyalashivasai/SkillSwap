@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:skillswap/core/utils/validators.dart';
 import 'package:skillswap/features/auth/services/auth_service.dart';
 
@@ -30,19 +31,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _isLoading = true);
     
     try {
-      await AuthService().registerWithEmail(
+      final user = await AuthService().registerWithEmail(
         _emailController.text.trim(),
         _passwordController.text.trim(),
         _nameController.text.trim(),
       );
+       if (user != null && mounted) {
+        context.goNamed('onboarding'); // Navigate to home screen
+      }
       // Success - Router will handle navigation
     } catch (e) {
+      // ignore: use_build_context_synchronously
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.toString())),
       );
     } finally {
       setState(() => _isLoading = false);
     }
+
+
   }
 
   @override
@@ -113,7 +120,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
               ),
               TextButton(
-                onPressed: () => Navigator.pop(context),
+                 onPressed: () => context.goNamed('login'),
                 child: const Text('Already have an account? Login'),
               ),
             ],

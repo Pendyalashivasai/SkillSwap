@@ -3,27 +3,76 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'package:skillswap/core/app_router.dart';
+import 'package:skillswap/features/auth/controllers/auth_controller.dart';
+import 'package:skillswap/features/auth/services/auth_service.dart';
 import 'package:skillswap/services/firestore_service.dart';
 import 'package:skillswap/state/skill_state.dart';
 import 'package:skillswap/state/user_state.dart';
 import 'package:skillswap/state/chat_state.dart';
+import 'package:skillswap/services/mongodb_service.dart';
+
+import 'features/profile/services/profile_service.dart';
+import 'firebase_options.dart';
+import 'services/swap_service.dart';
+import 'state/swaprequest_state.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
-
-  // Initialize FirestoreService (your database handler)
-  final firestoreService = FirestoreService();
   
- final FirebaseAuth auth = FirebaseAuth.instance;
-final String currentUserId = auth.currentUser?.uid ?? '';
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  // Initialize Firebase Auth
+  
+  final mongoDBService = await MongoDBService.initialize();
+  final userState = UserState(mongoDBService);
+  final profileService = ProfileService(mongoDBService, userState);
+  final firestoreService = FirestoreService();
+  final swapService = SwapService();
 
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (context) => SkillState(firestoreService)),
-        ChangeNotifierProvider(create: (context) => UserState(firestoreService)),
-        ChangeNotifierProvider(create: (context) => ChatState(firestoreService, currentUserId)),
+        Provider<MongoDBService>(
+          create: (_) => mongoDBService,
+        ),
+        Provider<ProfileService>(
+          create: (_) => profileService,
+        ),
+        Provider<SwapService>(
+          create: (_) => swapService,
+        ),
+        ChangeNotifierProvider(
+          create: (_) => AuthController(AuthService()),
+        ),
+        ChangeNotifierProxyProvider<AuthController, UserState>(
+          create: (_) => UserState(mongoDBService),
+          update: (_, authController, previousState) {
+            if (authController.currentUser?.uid != null) {
+              print("Main: Updating UserState with uid: ${authController.currentUser?.uid}");
+              return (previousState ?? UserState(mongoDBService))
+                ..setCurrentUserId(authController.currentUser!.uid);
+            }
+            return previousState ?? UserState(mongoDBService);
+          },
+        ),
+        ChangeNotifierProvider(
+          create: (context) => SkillState(firestoreService)
+        ),
+        ChangeNotifierProvider(
+          create: (context) => ChatState(
+            firestoreService, 
+            FirebaseAuth.instance.currentUser?.uid ?? ''
+          )
+        ),
+        ChangeNotifierProxyProvider<AuthController, SwapRequestState>(
+          create: (_) => SwapRequestState(swapService, ''),
+          update: (_, authController, previous) => SwapRequestState(
+            swapService,
+            authController.currentUser?.uid ?? '',
+          ),
+        ),
       ],
       child: MyApp(),
     ),
@@ -31,7 +80,7 @@ final String currentUserId = auth.currentUser?.uid ?? '';
 }
 
 class MyApp extends StatelessWidget {
-  MyApp({super.key});
+    MyApp({super.key});
   
   final AppRouter _appRouter = AppRouter();
 

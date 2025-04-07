@@ -10,6 +10,7 @@ class AuthController extends ChangeNotifier {
   AuthController(this._authService) {
     _authService.authStateChanges.listen((user) {
       _currentUser = user;
+     print("AuthController: Current User ID: ${user?.uid}"); 
       notifyListeners();
     });
   }

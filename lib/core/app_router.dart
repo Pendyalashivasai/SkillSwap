@@ -7,6 +7,8 @@ import 'package:skillswap/features/auth/screens/forgot_password_screen.dart';
 import 'package:skillswap/features/skills/screens/home_screen.dart';
 import 'package:skillswap/features/splash/splash_screen.dart';
 
+import '../features/auth/screens/onboarding_screen.dart';
+
 
 class AppRouter {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -38,7 +40,11 @@ class AppRouter {
         name: 'forgot-password',
         builder: (context, state) => const ForgotPasswordScreen(),
       ),
-      
+      GoRoute(
+  path: '/onboarding',
+  name: 'onboarding',
+  builder: (context, state) => const OnboardingScreen(),
+),
       // Main App
       GoRoute(
         path: '/home',
