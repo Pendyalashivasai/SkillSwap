@@ -35,13 +35,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Future<void> _saveProfile() async {
     setState(() => _isLoading = true);
     try {
-      await context.read<UserState>().updateProfile(
-            _currentUser.copyWith(
-              name: _nameController.text.trim(),
-              skillsOffering: _skillsOffering.toList(),
-              skillsSeeking: _skillsSeeking.toList(),
-            ),
-          );
+      print('EditProfileScreen: Current user profileImageUrl - ${_currentUser.profileImageUrl}');
+
+      final updatedUser = _currentUser.copyWith(
+        name: _nameController.text.trim(),
+        skillsOffering: _skillsOffering.toList(),
+        skillsSeeking: _skillsSeeking.toList(),
+        profileImageUrl: _currentUser.profileImageUrl, // Explicitly preserve profileImageUrl
+      );
+
+      print('EditProfileScreen: Updated user profileImageUrl - ${updatedUser.profileImageUrl}');
+
+      await context.read<UserState>().updateProfile(updatedUser);
+
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) {

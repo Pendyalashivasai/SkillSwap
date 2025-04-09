@@ -1,57 +1,64 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:skillswap/models/chat_model.dart';
-import 'package:skillswap/models/message_model.dart';
-import 'package:skillswap/services/firestore_service.dart';
+import '../models/chat_model.dart';
+import '../models/message_model.dart';
+import '../services/firestore_service.dart';
 
 class ChatState extends ChangeNotifier {
   final FirestoreService _firestore;
   final String currentUserId;
-  List<Chat> _chats = [];
-  Map<String, List<Message>> _messages = {};
+  List<ChatModel> _chats = [];
+  StreamSubscription<List<ChatModel>>? _chatsSubscription;
 
-  ChatState(this._firestore, this.currentUserId);
-
-  List<Chat> get chats => _chats;
-  
-  Future<void> loadChats() async {
-    _chats = await _firestore.getUserChats(currentUserId);
-    notifyListeners();
+  ChatState(this._firestore, this.currentUserId) {
+    _initializeChats();
   }
 
-  List<Message> getMessages(String chatId) {
-    return _messages[chatId] ?? [];
-  }
+  List<ChatModel> get chats => _chats;
 
-  Chat? getChat(String chatId) {
-    return _chats.firstWhere((chat) => chat.id == chatId);
-  }
-
-  Future<void> loadMessages(String chatId) async {
-    _messages[chatId] = await _firestore.getChatMessages(chatId);
-    notifyListeners();
+  Stream<List<ChatModel>> getChatStream() {
+    return _firestore.getUserChatsStream(currentUserId);
   }
 
   Future<void> sendMessage(String chatId, String content) async {
-    final message = Message(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      chatId: chatId,
-      senderId: currentUserId,
-      content: content,
-      timestamp: DateTime.now(),
-      isRead: false,
-    );
-
-    await _firestore.sendMessage(message);
-    await loadMessages(chatId);
+    try {
+      await _firestore.sendMessage(chatId, currentUserId, content);
+    } catch (e) {
+      print('ChatState: Error sending message - $e');
+      rethrow;
+    }
   }
 
   Future<void> markMessagesAsRead(String chatId) async {
-    await _firestore.markMessagesAsRead(chatId, currentUserId);
-    await loadMessages(chatId);
+    try {
+      await _firestore.markChatAsRead(chatId, currentUserId);
+    } catch (e) {
+      print('ChatState: Error marking messages as read - $e');
+    }
+  }
+
+  void _initializeChats() {
+    print('ChatState: Initializing chats for user $currentUserId');
+    _chatsSubscription?.cancel();
+    _chatsSubscription = _firestore.getUserChatsStream(currentUserId).listen(
+      (updatedChats) {
+        print('ChatState: Received ${updatedChats.length} chats');
+        _chats = updatedChats;
+        notifyListeners();
+      },
+      onError: (e) => print('ChatState: Error listening to chats - $e'),
+    );
   }
 
   Stream<QuerySnapshot> getMessageStream(String chatId) {
-    return _firestore.getMessageStream(chatId);
+    return _firestore.getChatMessagesStream(chatId);
+  }
+
+  @override
+  void dispose() {
+    _chatsSubscription?.cancel();
+    super.dispose();
   }
 }

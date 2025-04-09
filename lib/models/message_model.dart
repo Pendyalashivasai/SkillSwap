@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart' show Timestamp;
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Message {
   final String id;
@@ -17,26 +17,23 @@ class Message {
     this.isRead = false,
   });
 
+  Map<String, dynamic> toMap() {
+    return {
+      'senderId': senderId,
+      'content': content,
+      'timestamp': FieldValue.serverTimestamp(),
+      'isRead': isRead,
+    };
+  }
+
   factory Message.fromMap(Map<String, dynamic> map, String id) {
     return Message(
       id: id,
-      chatId: map['chatId'],
-      senderId: map['senderId'],
-      content: map['content'],
+      chatId: map['chatId'] ?? '',
+      senderId: map['senderId'] ?? '',
+      content: map['content'] ?? '',
       timestamp: (map['timestamp'] as Timestamp).toDate(),
       isRead: map['isRead'] ?? false,
     );
-  }
-
-  get receiverId => null;
-
-  Map<String, dynamic> toMap() {
-    return {
-      'chatId': chatId,
-      'senderId': senderId,
-      'content': content,
-      'timestamp': Timestamp.fromDate(timestamp),
-      'isRead': isRead,
-    };
   }
 }

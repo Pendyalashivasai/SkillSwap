@@ -4,14 +4,27 @@
     "description": "Express server to serve images from MongoDB GridFS",
     "main": "server.js",
     "scripts": {
-      "start": "node index.js"
+        "start": "node index.js"
     },
     "keywords": [],
     "author": "",
     "license": "ISC",
     "dependencies": {
-      "express": "^4.18.2",
-      "mongodb": "^5.8.0"
-    }
-  }
-  
+        "express": "^4.18.2",
+        "firebase-admin": "^13.2.0",
+        "mongodb": "^5.8.0"
+    },
+    "directories": {
+        "lib": "lib",
+        "test": "test"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/Pendyalashivasai/SkillSwap.git"
+    },
+    "type": "commonjs",
+    "bugs": {
+        "url": "https://github.com/Pendyalashivasai/SkillSwap/issues"
+    },
+    "homepage": "https://github.com/Pendyalashivasai/SkillSwap#readme"
+}

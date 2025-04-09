@@ -5,7 +5,7 @@ import 'package:image/image.dart' as img;
 
 class MongoDBService {
   // Change this to your backend server URL
-  static const String baseUrl = 'http://localhost:3001';
+  static const String baseUrl = 'https://image-server-0041.onrender.com';
   final Db _db;
   final String _gridFSBucket = 'profile_images';
   late GridFS _gridFS;

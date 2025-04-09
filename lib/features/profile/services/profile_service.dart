@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:skillswap/models/skill_model.dart';
 import 'package:skillswap/models/user_model.dart';
 import 'package:skillswap/services/firestore_service.dart';
@@ -13,7 +14,7 @@ class ProfileService {
 
   ProfileService(this._mongodb, this._userState);
 
-  Future<void> updateProfilePicture(String userId, String imagePath) async {
+  Future<String> updateProfilePicture(String userId, String imagePath) async {
     try {
       // Upload the image to MongoDB and get the URL
       final imageUrl = await _mongodb.uploadProfileImage(
@@ -23,11 +24,17 @@ class ProfileService {
       print('ProfileService: Generated image URL - $imageUrl');
 
       // Update the user's profile in Firestore
-      await _firestore.updateUser(userId, {'profileImageUrl': imageUrl});
+      await _firestore.updateUser(userId, {
+        'profileImageUrl': imageUrl,
+        'lastProfileUpdate': FieldValue.serverTimestamp(),
+      });
       print('ProfileService: Updated user with image URL - $imageUrl');
 
       // Update the local state
       await _userState.updateProfileImage(userId, imageUrl);
+      print('ProfileService: Updated local user state with image URL - $imageUrl');
+
+      return imageUrl;
     } catch (e) {
       print('ProfileService: Error updating profile picture - $e');
       rethrow;
@@ -39,7 +46,9 @@ class ProfileService {
       final userData = await _mongodb.getUser(userId);
       if (userData != null) {
         print('ProfileService: Raw user data - $userData');
-        _userState.setCurrentUserId(UserModel.fromMap(userData) as String);
+       final userModel = UserModel.fromMap(userData);
+        _userState.setCurrentUserId(userModel.id);
+
         print('ProfileService: Loaded user with image URL - ${_userState.currentUser?.profileImageUrl}');
       }
     } catch (e) {
@@ -74,6 +83,7 @@ class ProfileService {
     final updatedUser = _userState.currentUser!.copyWith(skillsOffering: updatedSkills);
     
     await _mongodb.updateUser(userId, {'skillsOffering': updatedSkills});
-    _userState.setCurrentUserId(updatedUser as String); // Update local state
+    _userState.setCurrentUserId(updatedUser.id); // Update local state
+ // Update local state
   }
 }

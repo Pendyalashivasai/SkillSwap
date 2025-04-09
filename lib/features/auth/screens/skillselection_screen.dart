@@ -93,64 +93,81 @@ class _SkillSelectionScreenState extends State<SkillSelectionScreen> {
   }
 
   Widget _buildSkillList(bool isTeaching) {
-    final skills = context.watch<SkillState>().availableSkills;
-    final searchQuery = _searchController.text.toLowerCase();
-    
-    // Improve search to include both name and category
-    final filteredSkills = skills.where((skill) => 
-      skill.name.toLowerCase().contains(searchQuery) ||
-      skill.category.toLowerCase().contains(searchQuery)
-    ).toList();
+    return Consumer<SkillState>(
+      builder: (context, skillState, child) {
+        final skills = skillState.availableSkills;
+        print('SkillSelectionScreen: Building skill list with ${skills.length} skills');
+        
+        if (skills.isEmpty) {
+          print('SkillSelectionScreen: No skills available');
+          return const Center(
+            child: CircularProgressIndicator(),
+          );
+        }
 
-    print('Filtered skills count: ${filteredSkills.length}'); // Debug print
+        final searchQuery = _searchController.text.toLowerCase();
+        final filteredSkills = skills.where((skill) => 
+          skill.name.toLowerCase().contains(searchQuery) ||
+          skill.category.toLowerCase().contains(searchQuery)
+        ).toList();
 
-    return ListView.builder(
-      itemCount: filteredSkills.length,
-      itemBuilder: (context, index) {
-        final skill = filteredSkills[index];
-        final selectedSkills = isTeaching ? _teachingSkills : _learningSkills;
-        final isSelected = selectedSkills.any((s) => s.id == skill.id);
+        print('SkillSelectionScreen: Filtered to ${filteredSkills.length} skills');
 
-        return ListTile(
-          title: Text(skill.name),
-          subtitle: Text(skill.category),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (isSelected) DropdownButton<int>(
-                value: selectedSkills
-                    .firstWhere((s) => s.id == skill.id)
-                    .proficiency,
-                items: [1, 2, 3, 4, 5].map((level) => 
-                  DropdownMenuItem(
-                    value: level,
-                    child: Text('Level $level'),
+        return ListView.builder(
+          itemCount: filteredSkills.length,
+          itemBuilder: (context, index) {
+            final skill = filteredSkills[index];
+            final selectedSkills = isTeaching ? _teachingSkills : _learningSkills;
+            final isSelected = selectedSkills.any((s) => s.id == skill.id);
+
+            return ListTile(
+              title: Text(skill.name),
+              subtitle: Text(skill.category),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (isSelected) _buildProficiencyDropdown(skill, selectedSkills),
+                  Checkbox(
+                    value: isSelected,
+                    onChanged: (checked) => _toggleSkill(checked, skill, selectedSkills),
                   ),
-                ).toList(),
-                onChanged: (level) {
-                  setState(() {
-                    selectedSkills.removeWhere((s) => s.id == skill.id);
-                    selectedSkills.add(skill.copyWith(proficiency: level!));
-                  });
-                },
+                ],
               ),
-              Checkbox(
-                value: isSelected,
-                onChanged: (checked) {
-                  setState(() {
-                    if (checked!) {
-                      selectedSkills.add(skill.copyWith(proficiency: 1));
-                    } else {
-                      selectedSkills.removeWhere((s) => s.id == skill.id);
-                    }
-                  });
-                },
-              ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
+  }
+
+  Widget _buildProficiencyDropdown(Skill skill, Set<Skill> selectedSkills) {
+    return DropdownButton<int>(
+      value: selectedSkills
+          .firstWhere((s) => s.id == skill.id)
+          .proficiency,
+      items: [1, 2, 3, 4, 5].map((level) => 
+        DropdownMenuItem(
+          value: level,
+          child: Text('Level $level'),
+        ),
+      ).toList(),
+      onChanged: (level) {
+        setState(() {
+          selectedSkills.removeWhere((s) => s.id == skill.id);
+          selectedSkills.add(skill.copyWith(proficiency: level!));
+        });
+      },
+    );
+  }
+
+  void _toggleSkill(bool? checked, Skill skill, Set<Skill> selectedSkills) {
+    setState(() {
+      if (checked!) {
+        selectedSkills.add(skill.copyWith(proficiency: 1));
+      } else {
+        selectedSkills.removeWhere((s) => s.id == skill.id);
+      }
+    });
   }
 
   Future<void> _showAddCustomSkillDialog() async {

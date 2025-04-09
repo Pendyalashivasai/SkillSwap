@@ -12,22 +12,33 @@ class SwapRequestState extends ChangeNotifier {
   StreamSubscription<List<SwapRequestModel>>? _requestsSubscription;
 
   SwapRequestState(this._swapService, this._userId) {
+    print('SwapRequestState: Initializing with user ID: $_userId');
     if (_userId.isNotEmpty) {
-      _listenToRequests();
+      _initializeRequests();
     }
   }
 
   List<SwapRequestModel> get receivedRequests => _receivedRequests;
 
-  void _listenToRequests() {
-    _requestsSubscription?.cancel();
-    _requestsSubscription = _swapService.watchReceivedRequests(_userId).listen(
-      (requests) {
-        _receivedRequests = requests;
-        notifyListeners();
-      },
-      onError: (e) => print('SwapRequestState: Error watching requests - $e'),
-    );
+  Future<void> _initializeRequests() async {
+    try {
+      print('SwapRequestState: Starting to listen to requests for user $_userId');
+      _requestsSubscription?.cancel();
+      _requestsSubscription = _swapService
+          .watchReceivedRequests(_userId)
+          .listen(
+            (requests) {
+              print('SwapRequestState: Received ${requests.length} requests');
+              _receivedRequests = requests;
+              notifyListeners();
+            },
+            onError: (e) {
+              print('SwapRequestState: Error watching requests - $e');
+            },
+          );
+    } catch (e) {
+      print('SwapRequestState: Error initializing requests - $e');
+    }
   }
 
   Future<void> acceptRequest(String requestId) async {

@@ -47,6 +47,7 @@ class UserState extends ChangeNotifier {
         } else {
           _currentUser = firestoreUser;
         }
+        print("UserState: Loaded user with profileImageUrl - ${_currentUser?.profileImageUrl}");
         notifyListeners();
       }
     } catch (e) {
@@ -100,11 +101,27 @@ class UserState extends ChangeNotifier {
 
   Future<void> updateProfile(UserModel updatedUser) async {
     try {
-      // Convert UserModel to a Map for Firestore
-      final updates = updatedUser.toMap();
-      await _firestore.updateUser(updatedUser.id, updates); // Pass userId and updates
+      // Don't fetch from MongoDB here - use the existing profileImageUrl
+      print('UserState: Current profileImageUrl - ${updatedUser.profileImageUrl}');
+
+      // Include profileImageUrl in updates
+      final updates = {
+        'name': updatedUser.name,
+        'email': updatedUser.email,
+        'profileImageUrl': updatedUser.profileImageUrl, // Include this
+        'skillsOffering': updatedUser.skillsOffering.map((s) => s.toMap()).toList(),
+        'skillsSeeking': updatedUser.skillsSeeking.map((s) => s.toMap()).toList(),
+        'hasCompletedOnboarding': updatedUser.hasCompletedOnboarding,
+      };
+
+      // Update Firestore
+      await _firestore.updateUser(updatedUser.id, updates);
+
+      // Update local state with the same user model
       _currentUser = updatedUser;
       notifyListeners();
+
+      print('UserState: Updated local state with profileImageUrl - ${_currentUser?.profileImageUrl}');
     } catch (e) {
       print('UserState: Error updating profile - $e');
       rethrow;
@@ -167,12 +184,17 @@ class UserState extends ChangeNotifier {
       // Update local state
       if (_currentUser != null && userId == _currentUser!.id) {
         _currentUser = _currentUser!.copyWith(
-          skillsOffering: (updates['skillsOffering'] as List)
-              .map((s) => Skill.fromMap(s))
-              .toList(),
-          skillsSeeking: (updates['skillsSeeking'] as List)
-              .map((s) => Skill.fromMap(s))
-              .toList(),
+          profileImageUrl: updates['profileImageUrl'] ?? _currentUser!.profileImageUrl,
+          skillsOffering: updates['skillsOffering'] != null
+              ? (updates['skillsOffering'] as List)
+                  .map((s) => Skill.fromMap(s))
+                  .toList()
+              : _currentUser!.skillsOffering,
+          skillsSeeking: updates['skillsSeeking'] != null
+              ? (updates['skillsSeeking'] as List)
+                  .map((s) => Skill.fromMap(s))
+                  .toList()
+              : _currentUser!.skillsSeeking,
         );
         notifyListeners();
       }
@@ -184,9 +206,14 @@ class UserState extends ChangeNotifier {
 
   Future<void> updateProfileImage(String userId, String imageUrl) async {
     try {
+      // Update Firestore first
+      await _firestore.updateUser(userId, {'profileImageUrl': imageUrl});
+
       // Update local state
       if (_currentUser != null && userId == _currentUser!.id) {
-        _currentUser = _currentUser!.copyWith(profileImageUrl: imageUrl);
+        final updatedUser = _currentUser!.copyWith(profileImageUrl: imageUrl);
+        _currentUser = updatedUser; // Replace entire user object
+        print("UserState: Updated local profile image URL - $imageUrl");
         notifyListeners();
       }
     } catch (e) {

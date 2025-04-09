@@ -238,30 +238,17 @@ class _ProfileHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    print('ProfileHeader: Building with imageUrl - ${user.profileImageUrl}');
+    print('ProfileHeader: Building with profileImageUrl - ${user.profileImageUrl}');
     return Row(
       children: [
         CircleAvatar(
           radius: 40,
-          backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-          child: user.profileImageUrl != null
-              ? ClipOval(
-                  child: CachedNetworkImage(
-                    imageUrl: user.profileImageUrl!,
-                    placeholder: (context, url) {
-                      print('ProfileHeader: Loading image from - $url');
-                      return const CircularProgressIndicator();
-                    },
-                    errorWidget: (context, url, error) {
-                      print('ProfileHeader: Error loading image - $error');
-                      return const Icon(Icons.person);
-                    },
-                    fit: BoxFit.cover,
-                    width: 80,
-                    height: 80,
-                  ),
-                )
-              : const Icon(Icons.person, size: 40),
+          backgroundImage: user.profileImageUrl != null
+              ? NetworkImage(user.profileImageUrl!)
+              : null,
+          child: user.profileImageUrl == null
+              ? const Icon(Icons.person, size: 40)
+              : null,
         ),
         const SizedBox(width: 16),
         Expanded(

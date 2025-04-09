@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
-import 'package:skillswap/models/message_model.dart';
-import 'package:skillswap/state/chat_state.dart';
+import '../../../state/chat_state.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
+  final String otherUserName;
 
-  const ChatScreen({super.key, required this.chatId});
+  const ChatScreen({
+    Key? key,
+    required this.chatId,
+    required this.otherUserName,
+  }) : super(key: key);
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -19,6 +24,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    // Mark messages as read when opening chat
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<ChatState>().markMessagesAsRead(widget.chatId);
     });
@@ -26,130 +32,128 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final chatState = context.watch<ChatState>();
-    final chat = chatState.getChat(widget.chatId);
-    final messages = chatState.getMessages(widget.chatId);
-
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          children: [
-            CircleAvatar(
-              backgroundImage: chat?.participantAvatar != null
-                  ? NetworkImage(chat!.participantAvatar!)
-                  : null,
-            ),
-            const SizedBox(width: 10),
-            Text(chat?.participantName ?? 'Chat'),
-          ],
-        ),
+        title: Text(widget.otherUserName),
       ),
       body: Column(
         children: [
           Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              reverse: true,
-              itemCount: messages.length,
-              itemBuilder: (context, index) {
-                final message = messages[index];
-                return _MessageBubble(message: message);
+            child: Consumer<ChatState>(
+              builder: (context, chatState, _) {
+                return StreamBuilder<QuerySnapshot>(
+                  stream: chatState.getMessageStream(widget.chatId),
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return Center(child: Text('Error: ${snapshot.error}'));
+                    }
+
+                    if (!snapshot.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    final messages = snapshot.data!.docs;
+
+                    return ListView.builder(
+                      reverse: true,
+                      controller: _scrollController,
+                      itemCount: messages.length,
+                      itemBuilder: (context, index) {
+                        final message = messages[index].data() as Map<String, dynamic>;
+                        final isMe = message['senderId'] == chatState.currentUserId;
+
+                        return _MessageBubble(
+                          message: message['content'],
+                          isMe: isMe,
+                        );
+                      },
+                    );
+                  },
+                );
               },
             ),
           ),
-          _MessageInput(
-            controller: _messageController,
-            onSend: () => _sendMessage(chatState),
-          ),
+          _buildMessageInput(),
         ],
       ),
     );
   }
 
-  void _sendMessage(ChatState chatState) {
-    if (_messageController.text.trim().isEmpty) return;
+  Widget _buildMessageInput() {
+    return Consumer<ChatState>(
+      builder: (context, chatState, _) {
+        return Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _messageController,
+                  decoration: const InputDecoration(
+                    hintText: 'Type a message...',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.send),
+                onPressed: () async {
+                  if (_messageController.text.trim().isEmpty) return;
 
-    chatState.sendMessage(
-      widget.chatId,
-      _messageController.text.trim(),
-    );
-    _messageController.clear();
-    _scrollController.animateTo(
-      0,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOut,
+                  try {
+                    await context.read<ChatState>().sendMessage(
+                      widget.chatId,
+                      _messageController.text.trim(),
+                    );
+                    _messageController.clear();
+                    _scrollController.animateTo(
+                      0,
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeOut,
+                    );
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Error sending message: $e')),
+                      );
+                    }
+                  }
+                },
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
 
 class _MessageBubble extends StatelessWidget {
-  final Message message;
+  final String message;
+  final bool isMe;
 
-  const _MessageBubble({required this.message});
-
-  @override
-  Widget build(BuildContext context) {
-    final isMe = message.senderId == context.read<ChatState>().currentUserId;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      child: Align(
-        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-        child: Container(
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.75,
-          ),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: isMe
-                ? Theme.of(context).primaryColor
-                : Colors.grey[300],
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Text(
-            message.content,
-            style: TextStyle(
-              color: isMe ? Colors.white : Colors.black,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MessageInput extends StatelessWidget {
-  final TextEditingController controller;
-  final VoidCallback onSend;
-
-  const _MessageInput({
-    required this.controller,
-    required this.onSend,
+  const _MessageBubble({
+    required this.message,
+    required this.isMe,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(8.0),
-      child: Row(
-        children: [
-          Expanded(
-            child: TextField(
-              controller: controller,
-              decoration: InputDecoration(
-                hintText: 'Type a message...',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-              ),
-              onSubmitted: (_) => onSend(),
-            ),
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+        decoration: BoxDecoration(
+          color: isMe ? Theme.of(context).primaryColor : Colors.grey[300],
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Text(
+          message,
+          style: TextStyle(
+            color: isMe ? Colors.white : Colors.black,
           ),
-          IconButton(
-            icon: const Icon(Icons.send),
-            onPressed: onSend,
-          ),
-        ],
+        ),
       ),
     );
   }

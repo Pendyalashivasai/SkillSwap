@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 enum SwapRequestStatus { pending, accepted, declined }
 
 class SwapRequestModel {
@@ -28,17 +30,23 @@ class SwapRequestModel {
     };
   }
 
-  factory SwapRequestModel.fromMap(Map<String, dynamic> map, String id) {
+  factory SwapRequestModel.fromMap(Map<String, dynamic> map, String docId) {
     return SwapRequestModel(
-      id: map['id'] ?? '',
+      id: map['id'] ?? docId, // Use document ID if 'id' field is not set
       senderId: map['senderId'] ?? '',
       receiverId: map['receiverId'] ?? '',
       status: SwapRequestStatus.values.firstWhere(
         (e) => e.name == map['status'],
         orElse: () => SwapRequestStatus.pending,
       ),
-      createdAt: DateTime.parse(map['createdAt']),
-      updatedAt: map['updatedAt'] != null ? DateTime.parse(map['updatedAt']) : null,
+      createdAt: map['createdAt'] is String 
+        ? DateTime.parse(map['createdAt'])
+        : (map['createdAt'] as Timestamp).toDate(),
+      updatedAt: map['updatedAt'] != null 
+        ? (map['updatedAt'] is String 
+          ? DateTime.parse(map['updatedAt'])
+          : (map['updatedAt'] as Timestamp).toDate())
+        : null,
     );
   }
 }

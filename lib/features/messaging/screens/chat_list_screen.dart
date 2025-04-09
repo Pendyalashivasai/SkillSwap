@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:skillswap/models/chat_model.dart';
 import 'package:skillswap/state/chat_state.dart';
+import 'package:skillswap/state/user_state.dart';
 import '../../../models/swaprequest_model.dart';
 import '../../../models/user_model.dart';
 import '../../../services/firestore_service.dart';
@@ -42,21 +43,52 @@ class _ChatTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<ChatState>(
       builder: (context, chatState, _) {
-        if (chatState.chats.isEmpty) {
-          return const Center(child: Text('No conversations yet'));
-        }
-        return ListView.builder(
-          itemCount: chatState.chats.length,
-          itemBuilder: (context, index) {
-            final chat = chatState.chats[index];
-            return _ChatListItem(
-              chat: chat,
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => ChatScreen(chatId: chat.id),
+        return StreamBuilder<List<ChatModel>>(
+          stream: chatState.getChatStream(),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              print('ChatTab: Error loading chats - ${snapshot.error}');
+              return Center(child: Text('Error: ${snapshot.error}'));
+            }
+
+            if (!snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            final chats = snapshot.data!;
+            if (chats.isEmpty) {
+              return const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.chat_bubble_outline, size: 48, color: Colors.grey),
+                    SizedBox(height: 16),
+                    Text(
+                      'No conversations yet',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  ],
                 ),
-              ),
+              );
+            }
+
+            return ListView.builder(
+              itemCount: chats.length,
+              itemBuilder: (context, index) {
+                final chat = chats[index];
+                return _ChatListItem(
+                  chat: chat,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ChatScreen(
+                        chatId: chat.id,
+                        otherUserName: chat.participantDetails.values.first['name'] ?? 'Unknown',
+                      ),
+                    ),
+                  ),
+                );
+              },
             );
           },
         );
@@ -68,19 +100,61 @@ class _ChatTab extends StatelessWidget {
 class _RequestsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    print('_RequestsTab: Building');
     return Consumer<SwapRequestState>(
       builder: (context, requestState, _) {
-        if (requestState.receivedRequests.isEmpty) {
-          return const Center(child: Text('No pending requests'));
+        final requests = requestState.receivedRequests;
+        print('_RequestsTab: Got ${requests.length} requests');
+
+        if (requests.isEmpty) {
+          print('_RequestsTab: No requests to display');
+          return const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.inbox, size: 48, color: Colors.grey),
+                SizedBox(height: 16),
+                Text(
+                  'No pending requests',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ],
+            ),
+          );
         }
+
+        print('_RequestsTab: Building list with ${requests.length} requests');
         return ListView.builder(
-          itemCount: requestState.receivedRequests.length,
+          itemCount: requests.length,
           itemBuilder: (context, index) {
-            final request = requestState.receivedRequests[index];
+            final request = requests[index];
+            print('_RequestsTab: Building request item ${request.id}');
             return _RequestListItem(
               request: request,
-              onAccept: () => requestState.acceptRequest(request.id),
-              onDecline: () => requestState.declineRequest(request.id),
+              onAccept: () async {
+                try {
+                  await requestState.acceptRequest(request.id);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Request accepted')),
+                  );
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error: $e')),
+                  );
+                }
+              },
+              onDecline: () async {
+                try {
+                  await requestState.declineRequest(request.id);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Request declined')),
+                  );
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error: $e')),
+                  );
+                }
+              },
               onTap: () => _showUserProfile(context, request.senderId),
             );
           },
@@ -143,19 +217,23 @@ class _RequestListItem extends StatelessWidget {
                 icon: const Icon(Icons.check, color: Colors.green),
                 onPressed: () async {
                   try {
-                    if (request.id.isEmpty) {
-                      throw Exception('Invalid request ID');
-                    }
                     await context.read<SwapRequestState>().acceptRequest(request.id);
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Request accepted')),
+                      // Navigate to chat
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ChatScreen(
+                            chatId: '${request.senderId}_${request.receiverId}',
+                            otherUserName: sender.name,
+                          ),
+                        ),
                       );
                     }
                   } catch (e) {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Failed to accept request: $e')),
+                        SnackBar(content: Text('Error: $e')),
                       );
                     }
                   }
@@ -192,50 +270,43 @@ class _RequestListItem extends StatelessWidget {
 }
 
 class _ChatListItem extends StatelessWidget {
-  final Chat chat;
+  final ChatModel chat;
   final VoidCallback onTap;
 
-  const _ChatListItem({required this.chat, required this.onTap});
+  const _ChatListItem({
+    required this.chat,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final currentUserId = context.read<UserState>().currentUserId!;
+    final unreadCount = chat.unreadCounts[currentUserId] ?? 0;
+    final otherUserId = chat.participants.firstWhere((id) => id != currentUserId);
+    final otherUserDetails = chat.participantDetails[otherUserId];
+
     return ListTile(
       leading: CircleAvatar(
-        backgroundImage: chat.participantAvatar != null
-            ? NetworkImage(chat.participantAvatar!)
+        backgroundImage: otherUserDetails?['profileImageUrl'] != null
+            ? NetworkImage(otherUserDetails!['profileImageUrl'])
+            : null,
+        child: otherUserDetails?['profileImageUrl'] == null
+            ? Text(otherUserDetails?['name']?[0] ?? '?')
             : null,
       ),
-      title: Text(chat.participantName),
+      title: Text(otherUserDetails?['name'] ?? 'Unknown'),
       subtitle: Text(
-        chat.lastMessage ?? '',
+        chat.lastMessage ?? 'No messages yet',
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
-      trailing: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            chat.lastMessageTime != null
-                ? _formatTime(chat.lastMessageTime)
-                : '',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-          if (chat.unreadCount > 0)
-            CircleAvatar(
-              radius: 10,
-              backgroundColor: Theme.of(context).primaryColor,
-              child: Text(
-                chat.unreadCount.toString(),
-                style: const TextStyle(fontSize: 10, color: Colors.white),
-              ),
-            ),
-        ],
-      ),
+      trailing: unreadCount > 0 ? Badge(
+        label: Text(
+          unreadCount.toString(),
+          style: const TextStyle(color: Colors.white),
+        ),
+      ) : null,
       onTap: onTap,
     );
-  }
-
-  String _formatTime(DateTime time) {
-    return '${time.hour}:${time.minute.toString().padLeft(2, '0')}';
   }
 }

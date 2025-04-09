@@ -34,6 +34,9 @@ void main() async {
   runApp(
     MultiProvider(
       providers: [
+        ChangeNotifierProvider(
+          create: (context) => SkillState(FirestoreService()),
+        ),
         Provider<MongoDBService>(
           create: (_) => mongoDBService,
         ),
@@ -62,25 +65,24 @@ void main() async {
         ),
         ChangeNotifierProvider(
           create: (context) => ChatState(
-            firestoreService, 
-            FirebaseAuth.instance.currentUser?.uid ?? ''
-          )
+            FirestoreService(),
+            context.read<UserState>().currentUserId ?? '',
+          ),
         ),
-        ChangeNotifierProxyProvider<AuthController, SwapRequestState>(
-          create: (_) => SwapRequestState(swapService, ''),
-          update: (_, authController, previous) => SwapRequestState(
-            swapService,
-            authController.currentUser?.uid ?? '',
+        ChangeNotifierProvider(
+          create: (context) => SwapRequestState(
+            SwapService(),
+            context.read<UserState>().currentUserId ?? '',
           ),
         ),
       ],
-      child: MyApp(),
+      child:  MyApp(),
     ),
   );
 }
 
 class MyApp extends StatelessWidget {
-    MyApp({super.key});
+     MyApp({super.key});
   
   final AppRouter _appRouter = AppRouter();
 
