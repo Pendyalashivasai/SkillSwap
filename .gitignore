@@ -43,3 +43,43 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Secret files and configurations
+service-account-key.json
+google-services.json
+firebase_options.dart
+.env
+*.env
+.env.*
+
+# MongoDB credentials
+mongodb_credentials.dart
+mongodb_config.dart
+
+# Firebase config files
+firebase_admin_sdk.json
+firestore.rules
+firestore.indexes.json
+
+# API Keys and Secrets
+**/lib/config/secrets.dart
+**/lib/config/api_keys.dart
+**/lib/services/keys/
+*secret*.json
+*secret*.dart
+
+# Local development configurations
+local.properties
+local.settings.json
+debug.keystore
+
+# Platform specific secrets
+**/ios/Runner/GoogleService-Info.plist
+**/macos/Runner/GoogleService-Info.plist
+**/android/app/google-services.json
+**/android/key.properties
+
+# Environment specific files
+.env.development
+.env.production
+.env.staging
