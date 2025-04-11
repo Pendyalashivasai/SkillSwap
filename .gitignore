@@ -61,6 +61,7 @@ firebase_admin_sdk.json
 firestore.rules
 firestore.indexes.json
 
+
 # API Keys and Secrets
 **/lib/config/secrets.dart
 **/lib/config/api_keys.dart
